@@ -1,46 +1,54 @@
+vca_testdata <- function(N = 100, L = 200) {
+  n = N
+  w = seq(0, 20, length.out = L)
+  ps = runif(n = n)
+  gr_lorentzian <- function(x, G, x_0, A) {
+    A * (1/pi) * (0.5 * G) / ((x - x_0)^2 + (0.5 * G)^2)
+  }
+  fun1 <- function(p) p*gr_lorentzian(w, 1, 5, 1) + (1-p)*gr_lorentzian(w, 1.5, 12, 1) + rnorm(n = length(w), mean = 0.05, sd = 0.02)
 
-n <- 100
-w <- seq(0, 20, length.out = 200)
-ps <- runif(n = n, min = 0, max = 1)
-
-gr_lorentzian <- function(x, G, x_0, A) {
-  A * (1/pi) * (0.5 * G) / ((x - x_0)^2 + (0.5 * G)^2)
+  testdata <- matrix(nrow = length(w), ncol = n)
+  for(x in seq_along(ps)) {
+    testdata[,x] <- fun1(ps[x])
+  }
+  list(N = N, L = L, R = testdata, w = w)
 }
-fun1 <- function(p) p*gr_lorentzian(w, 1, 5, 1) + (1-p)*gr_lorentzian(w, 1.5, 12, 1) + rnorm(n = length(w), mean = 0.05, sd = 0.02)
 
-R_test <- matrix(nrow = length(w), ncol = n)
-for(x in seq_along(ps)) {
-  R_test[,x] <- fun1(ps[x])
-}
+R_test <- vca_testdata(N = 100, L = 200)
+
+
 
 p <- 2 # endmembers
-r_m <- rowMeans(R_test)
-R_m <- matrix(data = rep(r_m, n), ncol = n, byrow = FALSE)
-R_o <- R_test - R_m
-singularVD <- svd(R_o %*% t(R_o),p)
+r_m <- cbind(rowMeans(R_test$R))
+R_m <- matrix(data = rep(r_m, R_test$N), ncol = R_test$N, byrow = FALSE)
+R_o <- R_test$R - R_m
+Ud <- svd((R_o %*% t(R_o))/R_test$N,p)$u
 
-x_p <- t(singularVD$u) %*% R_o
+x_p <- t(Ud) %*% R_o
 
-SNR <- snr_est(R_test, r_m, x_p) # Hertil
+
+SNR <- snr_est(R_test$R, r_m, x_p)
 SNR_th <- 15 + 10*log10(p)
-
 
 if (SNR > SNR_th) {
   print("Projective projection, U from SVD", quote = FALSE)
   d <- p
-  singularVD <- svd(R_test %*% t(R_test) / n, d)
-  x_p < t(singularVD$u) %*% R_test
-  Rp <- singularVD$u %*% x_p[1:d,]
-  x <- t(singularVD$u) %*% R_test
-  u <- t(singularVD$u) %*% r_m
-  ### Not done
+  Ud <- svd((R_test$R %*% t(R_test$R)) / R_test$N, d)$u
+  x_p <- t(Ud) %*% R_test$R
+  Rp <- Ud %*% x_p[1:d,]
+  x <- t(Ud) %*% R_test$R
+  u <- rowMeans(x)
+  y <- x / matrix(colSums(x * matrix(u, ncol = R_test$N, nrow = p)), ncol = R_test$N, nrow = d, byrow = TRUE)
 } else {
   d <- p - 1
   print("Projection to p-1 subspace, U from PCA", quote = FALSE)
-  Rp <- singularVD$u[,1:d] * x_p[1:d,] + R_m
+
+  Ud <- cbind(Ud[,1:d])
+
+  Rp <- Ud %*% x_p[1:d,] + R_m
   x <- x_p[1:d,]
   cx <- sqrt(max(colSums(as.matrix(x)^2)))
-  y <- matrix(data = c(x, cx*rep(1, n)), ncol = n, byrow = TRUE)
+  y <- rbind(x, cx * rep(1, R_test$N))
 }
 
 
@@ -61,9 +69,8 @@ for (i in 1:p) {
 
 Ae = Rp[, indice]
 
-
-plot(w, Ae[,1], type = 'l')
-plot(w, Ae[,2], type = 'l')
+plot(R_test$w, Ae[,1], type = 'l', col = 'red')
+lines(R_test$w, Ae[,2], type = 'l', col = 'blue')
 
 #
 # library(tidyverse)
